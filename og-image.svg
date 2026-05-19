@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+<defs><linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#0a7d76"/><stop offset="1" stop-color="#8651c7"/></linearGradient></defs>
+<rect width="1200" height="630" fill="url(#bg)"/>
+<text x="80" y="300" fill="#fff" font-size="96" font-family="Arial, sans-serif" font-weight="700">Colour Cluster</text>
+<text x="80" y="380" fill="#e8f7f6" font-size="44" font-family="Arial, sans-serif">Swipe • Merge • Top the leaderboard</text>
+</svg>
