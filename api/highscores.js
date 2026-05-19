@@ -1,11 +1,13 @@
-const KEY = 'colour-cluster-highscores';
+const LEADERBOARD_KEY = 'colour-cluster-highscores-zset';
 
-function sortScores(scores) {
-  return scores
-    .filter((row) => row && Number.isFinite(Number(row.score)) && row.name)
-    .map((row) => ({ name: String(row.name).slice(0, 12), score: Number(row.score) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 10);
+function normalizeName(value) {
+  return String(value || 'Player').trim().slice(0, 12) || 'Player';
+}
+
+function normalizeScore(value) {
+  const score = Number(value || 0);
+  if (!Number.isFinite(score) || score < 0) return null;
+  return Math.floor(score);
 }
 
 async function kvFetch(path, options = {}) {
@@ -24,14 +26,30 @@ async function kvFetch(path, options = {}) {
   return response.json();
 }
 
-async function getScores() {
-  const data = await kvFetch(`/get/${KEY}`);
-  const raw = data?.result ? JSON.parse(data.result) : [];
-  return sortScores(raw);
+async function addScoreAtomic(name, score) {
+  const member = JSON.stringify({
+    name: normalizeName(name),
+    t: Date.now(),
+    r: Math.random().toString(36).slice(2, 8)
+  });
+  await kvFetch(`/zadd/${LEADERBOARD_KEY}/${score}/${encodeURIComponent(member)}`);
 }
 
-async function saveScores(scores) {
-  await kvFetch(`/set/${KEY}`, { method: 'POST', body: JSON.stringify(scores) });
+async function topScores(limit = 10) {
+  const data = await kvFetch(`/zrevrange/${LEADERBOARD_KEY}/0/${Math.max(0, limit - 1)}/WITHSCORES`);
+  const result = Array.isArray(data?.result) ? data.result : [];
+  const rows = [];
+  for (let i = 0; i < result.length; i += 2) {
+    try {
+      const parsed = JSON.parse(result[i]);
+      const name = normalizeName(parsed?.name);
+      const score = normalizeScore(result[i + 1]);
+      if (score !== null) rows.push({ name, score });
+    } catch {
+      // ignore malformed member values
+    }
+  }
+  return rows;
 }
 
 export default async function handler(req, res) {
@@ -40,15 +58,13 @@ export default async function handler(req, res) {
       if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
         return res.status(200).json({ source: 'fallback', scores: [] });
       }
-      const scores = await getScores();
+      const scores = await topScores(10);
       return res.status(200).json({ source: 'kv', scores });
     }
 
     if (req.method === 'POST') {
-      const { name, score } = req.body || {};
-      const cleanName = String(name || 'Player').trim().slice(0, 12) || 'Player';
-      const cleanScore = Number(score || 0);
-      if (!Number.isFinite(cleanScore) || cleanScore < 0) {
+      const cleanScore = normalizeScore(req.body?.score);
+      if (cleanScore === null) {
         return res.status(400).json({ error: 'invalid score' });
       }
 
@@ -56,16 +72,14 @@ export default async function handler(req, res) {
         return res.status(202).json({ source: 'fallback', accepted: true });
       }
 
-      const scores = await getScores();
-      scores.push({ name: cleanName, score: cleanScore });
-      const next = sortScores(scores);
-      await saveScores(next);
-      return res.status(200).json({ source: 'kv', scores: next });
+      await addScoreAtomic(req.body?.name, cleanScore);
+      const scores = await topScores(10);
+      return res.status(200).json({ source: 'kv', scores });
     }
 
     res.setHeader('Allow', 'GET, POST');
     return res.status(405).json({ error: 'method not allowed' });
-  } catch (error) {
+  } catch {
     return res.status(500).json({ error: 'server error' });
   }
 }

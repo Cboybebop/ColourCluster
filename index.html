@@ -850,13 +850,24 @@
         const response = await fetch('/api/highscores');
         const payload = await response.json();
         const rows = Array.isArray(payload.scores) ? payload.scores : [];
-        leaderboardEl.innerHTML = rows.map((row) => `<li><strong>${row.name}</strong> — ${row.score}</li>`).join('');
+        leaderboardEl.textContent = '';
         leaderboardStatus.textContent = payload.source === 'kv'
           ? 'Live global scores (Vercel KV)'
           : 'Demo mode: connect Vercel KV env vars for global scores.';
         if (!rows.length) {
-          leaderboardEl.innerHTML = '<li>No scores yet — be the first.</li>';
+          const li = document.createElement('li');
+          li.textContent = 'No scores yet — be the first.';
+          leaderboardEl.appendChild(li);
+          return;
         }
+        rows.forEach((row) => {
+          const li = document.createElement('li');
+          const strong = document.createElement('strong');
+          strong.textContent = String(row.name || 'Player');
+          li.appendChild(strong);
+          li.append(` — ${Number(row.score) || 0}`);
+          leaderboardEl.appendChild(li);
+        });
       } catch (error) {
         leaderboardStatus.textContent = 'Leaderboard unavailable right now.';
       }
